@@ -1,0 +1,197 @@
+---
+title: "EPM"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+date: '2022-12-05'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Load data
+```{r}
+setwd("~/Documents/Systemic ESYT1 project locomotion, behavior, survival, anatomical data/Behavioral paradigms data processing/Behavior analysis for paper/Analysis R scripts/EPM/")
+library(pacman)
+p_load(readxl, tidyverse, emmeans, DescTools)
+
+
+df <- read_excel("EPM results.xlsx")
+```
+
+Assign genotypes
+```{r}
+df$Genotype <- 0
+
+
+
+df$Genotype <- ifelse(df$ID==702, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==730, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==734, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==738, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==625, 'SOD1', df$Genotype) #consider deleting, SOD/WT injected with hEsyt1
+df$Genotype <- ifelse(df$ID==627, 'SOD1', df$Genotype) #consider deleting, SOD/WT injected with hEsyt1
+df$Genotype <- ifelse(df$ID==615, 'SOD1', df$Genotype) #consider deleting, SOD/En injected with GFP
+df$Genotype <- ifelse(df$ID==788, 'SOD1', df$Genotype) #consider deleting, SOD/En injected with GFP
+df$Genotype <- ifelse(df$ID==700, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==692, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==706, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==708, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==553, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==555, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==694, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==698, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==696, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==561, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==736, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==589, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==603, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==607, 'SOD1En1cre', df$Genotype)
+
+```
+
+
+Removal of mouse 625 and 627 from dataset as they wrongly injected.
+```{r}
+df<-df[!(df$ID==625 | df$ID==627),] 
+
+```
+
+Time spent in arms:
+```{r}
+#Time spent in dark arms and time spent in light arms
+ df<-  df %>% mutate(time_dark=df$`In zone Closed_arm1 cumulative`+df$`In zone Closed_arm2 cumulative`)
+ df<-  df %>% mutate(time_light=df$`In zone Open_arm1 cumulative`+df$`In zone Open_arm2 cumaltive`)
+
+
+#relative time spent in dark over light excluding neutral zone time
+df<-  df %>% mutate(light_preference=time_light/(time_light+time_dark)*100) 
+
+
+```
+
+Frequency in arms
+```{r}
+#frequency in dark and light arms
+df<-  df %>% mutate(freq_dark=df$`In zone Closed_arm1  frequency`+df$`In zone Closed_arm2 frequency`)
+df<-  df %>% mutate(freq_light=df$`In zone Open_arm1 frequency`+df$`In zone Open_arm2 frequency`)
+
+#relative time spent in dark over light as entries in open arm / total arm entries
+df<-  df %>% mutate(light_preference_freq=freq_light/(freq_light+freq_dark)*100) 
+
+```
+
+testing by genotype:
+
+comparing relative light preference TIME
+```{r}
+df$Genotype <- factor(df$Genotype, levels = c("SOD1","SOD1En1cre","WT", "En1cre"))
+
+anova_light_pref_t <- aov(light_preference ~ Genotype, data = df)
+summary(anova_light_pref_t)
+
+DunnettTest(x=df$light_preference, g=df$Genotype)
+
+```
+
+
+comparing relative light preference frequency
+```{r}
+df$Genotype <- factor(df$Genotype, levels = c("SOD1","SOD1En1cre","WT", "En1cre"))
+
+anova_light_pref <- aov(light_preference_freq ~ Genotype, data = df)
+summary(anova_light_pref)
+
+DunnettTest(x=df$light_preference_freq, g=df$Genotype)
+
+
+```
+
+Plots
+
+Set color palette for plots
+
+For the plots, colors from the palette 'GrandBudapest1' from the 'wesanderson' package (Karthik Ram and Hadley Wickham (2018). wesanderson: A Wes Anderson Palette Generator. R package
+  version 0.3.6. https://CRAN.R-project.org/package=wesanderson) were used, but colors re-ordered so the darkest color was applied to the WT mice
+```{r}
+color_palette = c("#5B1A18","#D67236","#FD6467", "#F1BB7B")
+```
+
+
+Preparing the ggsignif function to use Dunnet's p-values
+```{r}
+
+stars <- function(p) {
+  case_when(
+    p <= 0.001 ~ "***",
+    p <= 0.01  ~ "**",
+    p <= 0.05  ~ "*",
+    TRUE       ~ "ns"
+  )
+}
+
+
+
+```
+
+light preference time
+```{r}
+p_load(multcomp, broom, ggsignif)
+
+Dunnet<- glht(anova_light_pref_t, mcp(Genotype = "Dunnet")) %>%tidy() %>% 
+  mutate(contrast = str_split(contrast, " - "),
+         stars    = stars(adj.p.value))
+
+#Re-ordering so the experimental groups appear in order of control level
+df$Genotype <- factor(df$Genotype, levels = c("WT", "En1cre","SOD1", "SOD1En1cre"))
+
+ggplot(data= df, aes(x=Genotype, y=light_preference)) +
+  geom_bar(stat = "summary",fun=mean, aes(color = Genotype,fill=Genotype), alpha = 0.01, size=1) +
+  geom_errorbar(stat="summary", fun.data=mean_se, width = 0.4, position = "dodge")+
+  theme(panel.background = element_rect(fill = "white"), axis.line = element_line(color="black"))+ 
+  scale_color_manual(values=color_palette)+
+  scale_fill_manual(values=color_palette)+
+  theme(text = element_text(family = "Arial"))+
+  ylab("Open Arm Time Percentage")+
+  geom_jitter(position = position_jitter(width = .2),alpha=0.6) +
+    theme(axis.title.x=element_blank(),  text = element_text(size=15),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+      ggsignif::geom_signif(family = "Arial",
+    comparisons = Dunnet$contrast,
+    annotations = Dunnet$stars,
+    y_position = c(27,25,23)
+  )
+
+```
+light preference frequency
+```{r}
+
+Dunnet<- glht(anova_light_pref, mcp(Genotype = "Dunnet")) %>%tidy() %>% 
+  mutate(contrast = str_split(contrast, " - "),
+         stars    = stars(adj.p.value))
+
+#Re-ordering so the experimental groups appear in order of control level
+df$Genotype <- factor(df$Genotype, levels = c("WT", "En1cre","SOD1", "SOD1En1cre"))
+
+ggplot(data= df, aes(x=Genotype, y=light_preference_freq)) +
+  geom_bar(stat = "summary",fun=mean, aes(color = Genotype,fill=Genotype), alpha = 0.01, size=1) +
+  geom_errorbar(stat="summary", fun.data=mean_se, width = 0.4, position = "dodge")+
+  theme(panel.background = element_rect(fill = "white"), axis.line = element_line(color="black"))+ 
+  scale_color_manual(values=color_palette)+
+  scale_fill_manual(values=color_palette)+
+  theme(text = element_text(family = "Arial"))+
+  ylab("Open Arm Entry Percentage")+
+  geom_jitter(position = position_jitter(width = .2),alpha=0.6) +
+    theme(axis.title.x=element_blank(),  text = element_text(size=15),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+      ggsignif::geom_signif(family = "Arial",
+    comparisons = Dunnet$contrast,
+    annotations = Dunnet$stars,
+    y_position = c(50,45,40)
+  )
+
+```
+

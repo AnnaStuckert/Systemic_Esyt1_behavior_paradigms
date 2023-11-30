@@ -1,0 +1,166 @@
+---
+title: "NOR"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+date: '2022-12-05'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load data
+```{r}
+setwd("~/Documents/Systemic ESYT1 project locomotion, behavior, survival, anatomical data/Behavioral paradigms data processing/Behavior analysis for paper/Analysis R scripts/NOR/")
+# Loading
+library(pacman)
+p_load(readxl, tidyverse)
+p_load(broom, ggsignif, multcomp, emmeans, DescTools)
+
+df <- read_excel("NOR results.xlsx") 
+
+```
+
+Assign genotypes
+```{r}
+df$Genotype <- 0
+
+df$Genotype <- ifelse(df$ID==702, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==730, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==734, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==738, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==625, 'SOD1', df$Genotype) #consider deleting, SOD/WT injected with hEsyt1
+df$Genotype <- ifelse(df$ID==627, 'SOD1', df$Genotype) #consider deleting, SOD/WT injected with hEsyt1
+df$Genotype <- ifelse(df$ID==615, 'SOD1', df$Genotype) #consider deleting, SOD/En injected with GFP
+df$Genotype <- ifelse(df$ID==788, 'SOD1', df$Genotype) #consider deleting, SOD/En injected with GFP
+df$Genotype <- ifelse(df$ID==700, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==692, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==706, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==708, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==553, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==555, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==694, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==698, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==696, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==561, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==736, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==589, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==603, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==607, 'SOD1En1cre', df$Genotype)
+
+
+class(df$Genotype)
+```
+remove the mouse that did not interact with the objects + the 2 mice that were wrongly injected
+```{r}
+df<-df[!(df$ID==625 | df$ID==627),] 
+#removal of mouse 788 because did not interact with object in novelty condition
+df<-df[!(df$ID==788),] 
+
+```
+
+Divide dataset up into phases with identical objects, and novel object
+
+```{r}
+Identical_cond <-  df %>% filter(Condition == "Identical")
+Novel_cond<-  df %>% filter(Condition == "NovRGHT"| Condition =="NovLFT")
+
+```
+
+## Novel object condition
+
+Calculating preference index for novel object over familiar object
+
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3332351/ 
+
+In Wang et al.’s research (2007), they applied a measure of cognitive function through the Preference Index. This is a ratio of the amount of time spent exploring any one of the two objects in training phase (A or B) or the novel one in test phase (C) over the total time spent exploring both objects, i.e., A or B/(B + A) * 100 (%) in the training session and B or C/(B + C) * 100 (%) in the test phase. Therefore, a preference index above 50% indicates novel object preference, below 50% familiar object preference, and 50% no preference (Hammond et al. 2004).
+
+```{r}
+Novel_left <-  df %>% filter(Condition =="NovLFT")
+Novel_right<-  df %>% filter(Condition == "NovRGHT")
+
+
+#time spent w novel and familiar object
+Novel_left<-  Novel_left %>% mutate(Time_novel=Novel_left$`In zone ContactZone_left cumulative s`)
+Novel_left<-  Novel_left %>% mutate(Time_familiar=Novel_left$`In zone ContactZone_right  cumulative s`)
+
+Novel_right<-  Novel_right %>% mutate(Time_novel=Novel_right$`In zone ContactZone_right  cumulative s`)
+Novel_right<-  Novel_right %>% mutate(Time_familiar=Novel_right$`In zone ContactZone_left cumulative s`)
+
+
+# calculating DR_ index as (time novel  / (time novel + time familiar)*100)
+
+Novel_right<- Novel_right %>% mutate(DR_index=((Novel_right$`In zone ContactZone_right  cumulative s`/(Novel_right$`In zone ContactZone_right  cumulative s`+Novel_right$`In zone ContactZone_left cumulative s`))*100))
+Novel_left<- Novel_left %>% mutate(DR_index=((Novel_left$`In zone ContactZone_left cumulative s`/(Novel_left$`In zone ContactZone_left cumulative s`+Novel_left$`In zone ContactZone_right  cumulative s`))*100))
+
+#DR index cannot be computed for M788 because it did not intercat with either object at all.
+
+df2 <- rbind(Novel_left,Novel_right)
+
+```
+
+Checking preference for novel object over known object
+
+```{r}
+#refactor genotype so SOD1 becomes control for Dunnet's post-hoc
+df2$Genotype <- factor(df2$Genotype, levels = c("SOD1","SOD1En1cre", "WT", "En1cre"))
+
+anova_novelty <- aov(df2$DR_index ~ Genotype, data = df2)
+summary(anova_novelty)
+
+#Dunnet's post hoc
+DunnettTest(x=df2$DR_index, g=df2$Genotype)
+
+```
+Set color palette for plots
+
+For the plots, colors from the palette 'GrandBudapest1' from the 'wesanderson' package (Karthik Ram and Hadley Wickham (2018). wesanderson: A Wes Anderson Palette Generator. R package
+  version 0.3.6. https://CRAN.R-project.org/package=wesanderson) were used, but colors re-ordered so the darkest color was applied to the WT mice
+```{r}
+color_palette = c("#5B1A18","#D67236","#FD6467", "#F1BB7B")
+```
+
+
+Preparing the ggsignif function to use Dunnet's p-values
+```{r}
+
+stars <- function(p) {
+  case_when(
+    p <= 0.001 ~ "***",
+    p <= 0.01  ~ "**",
+    p <= 0.05  ~ "*",
+    TRUE       ~ "ns"
+  )
+}
+
+```
+
+```{r}
+
+Dunnet<- glht(anova_novelty, mcp(Genotype = "Dunnet")) %>%tidy() %>% 
+  mutate(contrast = str_split(contrast, " - "),
+         stars    = stars(adj.p.value))
+
+#Re-ordering so the experimental groups appear in order of control level
+df2$Genotype <- factor(df2$Genotype, levels = c("WT", "En1cre","SOD1", "SOD1En1cre"))
+
+ggplot(data= df2, aes(x=Genotype, y=DR_index)) +
+  geom_bar(stat = "summary",fun=mean, aes(color = Genotype,fill=Genotype), alpha = 0.01, size=1) +
+  geom_errorbar(stat="summary", fun.data=mean_se, width = 0.4, position = "dodge")+
+  theme(panel.background = element_rect(fill = "white"), axis.line = element_line(color="black"))+ 
+  theme(text = element_text(family = "Arial"))+
+  scale_color_manual(values=color_palette)+
+  scale_fill_manual(values=color_palette)+
+  ylab("Novelty Preference Index")+
+  geom_jitter(position = position_jitter(width = .2),alpha=0.6) +
+    theme(axis.title.x=element_blank(),  text = element_text(size=15),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+      ggsignif::geom_signif(family = "Arial",
+    comparisons = Dunnet$contrast,
+    annotations = Dunnet$stars,
+    y_position = c(95,90,85)
+  )
+```

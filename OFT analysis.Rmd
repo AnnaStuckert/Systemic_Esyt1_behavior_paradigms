@@ -1,0 +1,276 @@
+---
+title: "OFT"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+date: '2022-12-05'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Load data
+```{r}
+setwd("~/Documents/Systemic ESYT1 project locomotion, behavior, survival, anatomical data/Behavioral paradigms data processing/Behavior analysis for paper/Analysis R scripts/OFT/")
+
+library(pacman)
+p_load(readxl, tidyverse)
+p_load(broom, ggsignif, multcomp, emmeans, DescTools)
+
+df <- read_excel("OFT results.xlsx")
+
+```
+
+Assign genotypes
+```{r}
+df$Genotype <- 0
+
+
+
+df$Genotype <- ifelse(df$ID==702, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==730, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==734, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==738, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==625, 'SOD1', df$Genotype) #consider deleting, SOD/WT injected with hEsyt1
+df$Genotype <- ifelse(df$ID==627, 'SOD1', df$Genotype) #consider deleting, SOD/WT injected with hEsyt1
+df$Genotype <- ifelse(df$ID==615, 'SOD1', df$Genotype) #consider deleting, SOD/En injected with GFP
+df$Genotype <- ifelse(df$ID==788, 'SOD1', df$Genotype) #consider deleting, SOD/En injected with GFP
+df$Genotype <- ifelse(df$ID==700, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==692, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==706, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==708, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==553, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==555, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==694, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==698, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==696, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==561, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==736, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==589, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==603, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==607, 'SOD1En1cre', df$Genotype)
+
+df$Genotype <- factor(df$Genotype, levels = c("SOD1", "WT", "En1cre", "SOD1En1cre"))
+
+```
+
+Removal of mouse 625 and 627 from dataset as they wrongly injected.
+```{r}
+df<-df[!(df$ID==625 | df$ID==627),] 
+
+```
+
+
+We will look how much time was spent on center compared to total OFT time (measure of anxiety, if anxious = more time spent in periphery - here used as an indicator of exploration levels)
+Periphery preference:
+
+```{r}
+df<-  df %>% mutate(periphery_preference=`In zone periphery cumulative s`/(`In zone Center cumulative s`+`In zone periphery cumulative s`)*100)
+
+```
+
+
+Testing by genotype:
+
+
+comparing distance moved
+
+Used in  https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4354627/pdf/jove-96-52434.pdf paper from methods
+
+WT (n = 24) and KO (n = 27) mice were subjected to the OFM and total distance in centimeters of their respective tracks were combined and statistically analyzed to visualize any differences in ambulation.
+
+
+```{r}
+df$distance <- df$`Distance moved cm`
+
+anova_distance_moved <- aov(df$distance ~ Genotype, data = df)
+summary(anova_distance_moved )
+
+DunnettTest(x=df$distance, g=df$Genotype)
+
+```
+
+
+Comparing periphery preference
+
+Used in  https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4354627/pdf/jove-96-52434.pdf paper from methods
+
+ WT (n = 24) and KO (n = 27) mice were subjected to the OFM and time spent in inner vs outer zones of the maze statistically analyzed for differences in mouse strains. Time spent in the outer zones of the maze  measures thigmotaxis or wall-hugging behavior and is indicative of anxiety-related behavior
+
+
+
+```{r}
+
+anova_periphery_preference <- aov(periphery_preference ~ Genotype, data = df)
+summary(anova_periphery_preference)
+
+DunnettTest(x=df$periphery_preference, g=df$Genotype)
+
+```
+
+
+Plots
+
+Set color palette for plots
+
+For the plots, colors from the palette 'GrandBudapest1' from the 'wesanderson' package (Karthik Ram and Hadley Wickham (2018). wesanderson: A Wes Anderson Palette Generator. R package
+  version 0.3.6. https://CRAN.R-project.org/package=wesanderson) were used, but colors re-ordered so the darkest color was applied to the WT mice
+```{r}
+color_palette = c("#5B1A18","#D67236","#FD6467", "#F1BB7B")
+```
+
+
+Preparing the ggsignif function to use Dunnet's p-values
+```{r}
+
+stars <- function(p) {
+  case_when(
+    p <= 0.001 ~ "***",
+    p <= 0.01  ~ "**",
+    p <= 0.05  ~ "*",
+    TRUE       ~ "ns"
+  )
+}
+
+```
+
+Periphery preference
+
+```{r}
+
+Dunnet<- glht(anova_periphery_preference, mcp(Genotype = "Dunnet")) %>%tidy() %>% 
+  mutate(contrast = str_split(contrast, " - "),
+         stars    = stars(adj.p.value))
+
+#Re-ordering so the experimental groups appear in order of control level
+df$Genotype <- factor(df$Genotype, levels = c("WT", "En1cre","SOD1", "SOD1En1cre"))
+
+ggplot(data= df, aes(x=Genotype, y=periphery_preference)) +
+  geom_bar(stat = "summary",fun=mean, aes(color = Genotype,fill=Genotype), alpha = 0.01, size=1) +
+  geom_errorbar(stat="summary", fun.data=mean_se, width = 0.4, position = "dodge")+
+  theme(panel.background = element_rect(fill = "white"), axis.line = element_line(color="black"))+ 
+  theme(text = element_text(family = "Arial"))+
+  ylab("Periphery Time Percentage")+
+  scale_color_manual(values=color_palette)+
+  scale_fill_manual(values=color_palette)+
+  geom_jitter(position = position_jitter(width = .2),alpha=0.6) +
+    theme(axis.title.x=element_blank(),  text = element_text(size=15),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+      ggsignif::geom_signif(family = "Arial",
+    comparisons = Dunnet$contrast,
+    annotations = Dunnet$stars,
+    y_position = c(105,100,95)
+  )
+```
+
+Distance moved
+```{r}
+
+df$Genotype <- factor(df$Genotype, levels = c("SOD1","SOD1En1cre", "WT", "En1cre"))
+anova_distance_moved <- aov(df$distance ~ Genotype, data = df)
+
+
+Dunnet<- glht(anova_distance_moved, mcp(Genotype = "Dunnet")) %>%tidy() %>% 
+  mutate(contrast = str_split(contrast, " - "),
+         stars    = stars(adj.p.value))
+
+#Re-ordering so the experimental groups appear in order of control level
+df$Genotype <- factor(df$Genotype, levels = c("WT", "En1cre","SOD1", "SOD1En1cre"))
+
+ggplot(data= df, aes(x=Genotype, y=distance)) +
+  geom_bar(stat = "summary",fun=mean, aes(color = Genotype,fill=Genotype), alpha = 0.01, size=1) +
+  geom_errorbar(stat="summary", fun.data=mean_se, width = 0.4, position = "dodge")+
+  theme(panel.background = element_rect(fill = "white"), axis.line = element_line(color="black"))+ 
+  ylab("Distance Traveled (cm)")+
+  theme(text = element_text(family = "Arial"))+
+  scale_color_manual(values=color_palette)+
+  scale_fill_manual(values=color_palette)+
+  geom_jitter(position = position_jitter(width = .2),alpha=0.6) +
+    theme(axis.title.x=element_blank(),  text = element_text(size=15),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+      ggsignif::geom_signif(family = "Arial",
+    comparisons = Dunnet$contrast,
+    annotations = Dunnet$stars,
+    y_position = c(7000,6500,6000)
+  )
+```
+
+
+Time in center
+
+```{r}
+
+df$center <- df$`In zone Center cumulative s`
+
+df$Genotype <- factor(df$Genotype, levels = c("SOD1","SOD1En1cre", "WT", "En1cre"))
+anova_center <- aov(df$center ~ Genotype, data = df)
+
+DunnettTest(x=df$center, g=df$Genotype)
+
+Dunnet<- glht(anova_center, mcp(Genotype = "Dunnet")) %>%tidy() %>% 
+  mutate(contrast = str_split(contrast, " - "),
+         stars    = stars(adj.p.value))
+
+#Re-ordering so the experimental groups appear in order of control level
+df$Genotype <- factor(df$Genotype, levels = c("WT", "En1cre","SOD1", "SOD1En1cre"))
+
+ggplot(data= df, aes(x=Genotype, y=center)) +
+  geom_bar(stat = "summary",fun=mean, aes(color = Genotype,fill=Genotype), alpha = 0.01, size=1) +
+  geom_errorbar(stat="summary", fun.data=mean_se, width = 0.4, position = "dodge")+
+  theme(panel.background = element_rect(fill = "white"), axis.line = element_line(color="black"))+ 
+  ylab("Time in center (s)")+
+  theme(text = element_text(family = "Arial"))+
+  scale_color_manual(values=color_palette)+
+  scale_fill_manual(values=color_palette)+
+  geom_jitter(position = position_jitter(width = .2),alpha=0.6) +
+    theme(axis.title.x=element_blank(),  text = element_text(size=15),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+      ggsignif::geom_signif(family = "Arial",
+    comparisons = Dunnet$contrast,
+    annotations = Dunnet$stars,
+    y_position = c(160,170,180)
+  )
+```
+Velocity
+
+```{r}
+
+
+df$velocity <- df$`Velocity cm/s`
+
+df$Genotype <- factor(df$Genotype, levels = c("SOD1","SOD1En1cre", "WT", "En1cre"))
+anova_velocity <- aov(df$velocity ~ Genotype, data = df)
+
+DunnettTest(x=df$velocity, g=df$Genotype)
+
+Dunnet<- glht(anova_velocity, mcp(Genotype = "Dunnet")) %>%tidy() %>% 
+  mutate(contrast = str_split(contrast, " - "),
+         stars    = stars(adj.p.value))
+
+#Re-ordering so the experimental groups appear in order of control level
+df$Genotype <- factor(df$Genotype, levels = c("WT", "En1cre","SOD1", "SOD1En1cre"))
+
+ggplot(data= df, aes(x=Genotype, y=velocity)) +
+  geom_bar(stat = "summary",fun=mean, aes(color = Genotype,fill=Genotype), alpha = 0.01, size=1) +
+  geom_errorbar(stat="summary", fun.data=mean_se, width = 0.4, position = "dodge")+
+  theme(panel.background = element_rect(fill = "white"), axis.line = element_line(color="black"))+ 
+  ylab("Velocity (cm/s)")+
+  theme(text = element_text(family = "Arial"))+
+  scale_color_manual(values=color_palette)+
+  scale_fill_manual(values=color_palette)+
+  geom_jitter(position = position_jitter(width = .2),alpha=0.6) +
+    theme(axis.title.x=element_blank(),  text = element_text(size=15),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+      ggsignif::geom_signif(family = "Arial",
+    comparisons = Dunnet$contrast,
+    annotations = Dunnet$stars,
+    y_position = c(10,11,12)
+  )
+```

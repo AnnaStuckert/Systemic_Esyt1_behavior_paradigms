@@ -1,0 +1,210 @@
+---
+title: "3CT"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+date: '2022-12-02'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load data
+```{r}
+setwd("~/Documents/Systemic ESYT1 project locomotion, behavior, survival, anatomical data/Behavioral paradigms data processing/Behavior analysis for paper/Analysis R scripts/3CT/")
+# Loading
+library(pacman)
+p_load(readxl, tidyverse)
+p_load(broom, ggsignif, multcomp, emmeans, DescTools)
+
+df <- read_excel("3CT results.xlsx")
+
+```
+
+Assign genotypes
+```{r}
+df$Genotype <- 0
+
+df$Genotype <- ifelse(df$ID==702, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==730, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==734, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==738, 'SOD1', df$Genotype)
+df$Genotype <- ifelse(df$ID==625, 'SOD1', df$Genotype) #consider deleting, SOD/WT injected with hEsyt1
+df$Genotype <- ifelse(df$ID==627, 'SOD1', df$Genotype) #consider deleting, SOD/WT injected with hEsyt1
+df$Genotype <- ifelse(df$ID==615, 'SOD1', df$Genotype) #consider deleting, SOD/En injected with GFP
+df$Genotype <- ifelse(df$ID==788, 'SOD1', df$Genotype) #consider deleting, SOD/En injected with GFP
+df$Genotype <- ifelse(df$ID==700, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==692, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==706, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==708, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==553, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==555, 'WT', df$Genotype)
+df$Genotype <- ifelse(df$ID==694, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==698, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==696, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==561, 'En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==736, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==589, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==603, 'SOD1En1cre', df$Genotype)
+df$Genotype <- ifelse(df$ID==607, 'SOD1En1cre', df$Genotype)
+
+```
+
+Removal of mouse 625 and 627 from dataset as they wrongly injected.
+```{r}
+df<-df[!(df$ID==625 | df$ID==627),] 
+
+```
+
+We will primarily analyse time spent in the different zones. It is generally expected that:
+
+Habituation phase: time spent in neutral, social, and novel zone will be approx. equal.
+
+For social phase (1 mouse introduced): time spent in social will be more than novelty zone.
+
+For novelty phase (1 novel mouse introduced into novelty zone): time spent in the novelty zone will be more than in the social zone.
+
+
+Divide dataset up into Habituation, social, and novelty phases
+
+```{r}
+habituation_cond <-  df %>% filter(Condition == "Hab")
+social_cond<-  df %>% filter(Condition == "Social")
+novelty_cond<-  df %>% filter(Condition == "Novel")
+```
+
+
+
+Calculating preferences for zones for the different conditions - as described in Baronio 2015 
+#https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0116363&type=printable 
+
+```{r}
+#This can be used for looking at preference for either side during habituation
+habituation_cond <- habituation_cond %>% mutate(social_preference_relative=((`In zone SocialZone cumulative s`-`In zone NoveltyZone cumulative s`)/(`In zone NoveltyZone cumulative s`+`In zone SocialZone cumulative s`)))
+
+
+social_cond <- social_cond %>% mutate(social_preference_relative=((`In zone SocialZone cumulative s`-`In zone NoveltyZone cumulative s`)/(`In zone NoveltyZone cumulative s`+`In zone SocialZone cumulative s`)))
+
+novelty_cond <- novelty_cond %>% mutate(novelty_preference_relative=((`In zone NoveltyZone cumulative s`-`In zone SocialZone cumulative s`)/(`In zone SocialZone cumulative s`+`In zone NoveltyZone cumulative s`)))
+
+```
+
+
+Test genotype differences - social preference
+
+
+```{r}
+social_cond$Genotype <- factor(social_cond$Genotype, levels = c("SOD1","SOD1En1cre","WT", "En1cre"))
+
+###Relative preference
+anova_social_preference_relative <- aov(social_preference_relative ~ Genotype, data = social_cond)
+summary(anova_social_preference_relative)
+
+#Dunnet's post hoc
+DunnettTest(x=social_cond$social_preference_relative, g=social_cond$Genotype)
+
+
+```
+
+
+##Plots
+
+Set color palette for plots
+
+For the plots, colors from the palette 'GrandBudapest1' from the 'wesanderson' package (Karthik Ram and Hadley Wickham (2018). wesanderson: A Wes Anderson Palette Generator. R package
+  version 0.3.6. https://CRAN.R-project.org/package=wesanderson) were used, but colors re-ordered so the darkest color was applied to the WT mice
+
+```{r}
+color_palette = c("#5B1A18","#D67236","#FD6467", "#F1BB7B")
+```
+
+Preparing the ggsignif function to use Dunnet's p-values
+```{r}
+
+stars <- function(p) {
+  case_when(
+    p <= 0.001 ~ "***",
+    p <= 0.01  ~ "**",
+    p <= 0.05  ~ "*",
+    TRUE       ~ "ns"
+  )
+}
+
+```
+
+```{r}
+
+#Re-ordering so the experimental groups appear in order of control level
+social_cond$Genotype <- factor(social_cond$Genotype, levels = c("WT", "En1cre","SOD1", "SOD1En1cre"))
+
+
+Dunnet<- glht(anova_social_preference_relative, mcp(Genotype = "Dunnet")) %>%tidy() %>% 
+  mutate(contrast = str_split(contrast, " - "),
+         stars    = stars(adj.p.value))
+
+
+
+ggplot(data= social_cond, aes(x=Genotype, y=social_preference_relative)) +
+  ylab("Sociability Index")+
+  geom_bar(stat = "summary",fun=mean, aes(color = Genotype,fill=Genotype), alpha = 0.01, size=1) +
+  geom_errorbar(stat="summary", fun.data=mean_se, width = 0.4, position = "dodge")+
+  theme(panel.background = element_rect(fill = "white"), axis.line = element_line(color="black"))+ 
+  theme(text = element_text(family = "Arial"))+
+  scale_color_manual(values=color_palette)+
+  scale_fill_manual(values=color_palette)+
+  geom_jitter(position = position_jitter(width = .2),alpha=0.6) +
+    theme(axis.title.x=element_blank(),  text = element_text(size=15),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+      ggsignif::geom_signif(family = "Arial",
+    comparisons = Dunnet$contrast,
+    annotations = Dunnet$stars,
+    y_position = c(1.2, 1.1,1)
+  )
+```
+
+Test genotype differences - novelty preference
+
+```{r}
+#refactor genotype so SOD1 becomes control for Dunnet's post-hoc
+novelty_cond$Genotype <- factor(novelty_cond$Genotype, levels = c("SOD1","SOD1En1cre", "WT", "En1cre"))
+
+###Relative preference
+anova_novel_preference_relative <- aov(novelty_preference_relative ~ Genotype, data = novelty_cond)
+summary(anova_novel_preference_relative)
+
+#Dunnet's post hoc
+DunnettTest(x=novelty_cond$novelty_preference_relative, g=novelty_cond$Genotype)
+
+```
+
+```{r}
+
+Dunnet<- glht(anova_novel_preference_relative, mcp(Genotype = "Dunnet")) %>%tidy() %>% 
+  mutate(contrast = str_split(contrast, " - "),
+         stars    = stars(adj.p.value))
+
+#Re-ordering so the experimental groups appear in order of control level
+novelty_cond$Genotype <- factor(novelty_cond$Genotype, levels = c("WT", "En1cre","SOD1", "SOD1En1cre"))
+
+ggplot(data= novelty_cond, aes(x=Genotype, y=novelty_preference_relative)) +
+  ylab("Social Novelty Preference Index")+
+  geom_bar(stat = "summary",fun=mean, aes(color = Genotype,fill=Genotype), alpha = 0.01, size=1) +
+  geom_errorbar(stat="summary", fun.data=mean_se, width = 0.4, position = "dodge")+
+  theme(panel.background = element_rect(fill = "white"), axis.line = element_line(color="black"))+ 
+  theme(text = element_text(family = "Arial"))+
+  scale_color_manual(values=color_palette)+
+  scale_fill_manual(values=color_palette)+
+  geom_jitter(position = position_jitter(width = .2),alpha=0.6) +
+    theme(axis.title.x=element_blank(),  text = element_text(size=15),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+      ggsignif::geom_signif(family = "Arial",
+    comparisons = Dunnet$contrast,
+    annotations = Dunnet$stars,
+    y_position = c(0.65,0.55,0.45)
+  )
+```
+
